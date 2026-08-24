@@ -1,13 +1,14 @@
 {
-    "name": "workflowy-mcp-server",
-    "version": "1.0.0",
-    "type": "module",
-    "scripts": {
-        "start": "node index.js"
-    },
-    "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.0.1",
-        "express": "^4.19.2",
-        "node-fetch": "^3.3.2"
-    }
+  "name": "workflowy-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2"
+  }
 }
