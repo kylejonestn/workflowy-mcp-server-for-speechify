@@ -5,7 +5,6 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  InitializeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import fetch from 'node-fetch';
 
@@ -16,7 +15,12 @@ const WORKFLOWY_API_KEY = process.env.WORKFLOWY_API_KEY;
 app.use(cors());
 app.use(express.json());
 
-// Initialize Server with explicit server info & capabilities
+// Root healthcheck
+app.get('/', (req, res) => {
+  res.send('Workflowy MCP Server is online.');
+});
+
+// Single MCP server instance
 const mcpServer = new Server(
   {
     name: 'workflowy-mcp',
@@ -25,41 +29,23 @@ const mcpServer = new Server(
   {
     capabilities: {
       tools: {},
-      prompts: {},
-      resources: {},
     },
   }
 );
 
-// Explicit MCP initialize handler
-mcpServer.setRequestHandler(InitializeRequestSchema, async (request) => {
-  return {
-    protocolVersion: '2024-11-05',
-    capabilities: {
-      tools: {},
-    },
-    serverInfo: {
-      name: 'workflowy-mcp',
-      version: '1.0.0',
-    },
-  };
-});
-
 // List available tools
-mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: 'get_workflowy_tree',
-        description: 'Fetches the current Workflowy outline tree, nodes, and active daily tasks.',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
+mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [
+    {
+      name: 'get_workflowy_tree',
+      description: 'Fetches the current Workflowy outline tree and active lists.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
       },
-    ],
-  };
-});
+    },
+  ],
+}));
 
 // Execute tool requests
 mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -93,40 +79,22 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
   throw new Error(`Tool not found: ${request.params.name}`);
 });
 
-const transports = new Map();
+// Manage active SSE transport session
+let transport = null;
 
-// Route both /sse and / to the SSE connection handler
-const handleSSE = async (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  const transport = new SSEServerTransport('/message', res);
-  transports.set(transport.sessionId, transport);
-
-  req.on('close', () => {
-    transports.delete(transport.sessionId);
-  });
-
+app.get('/sse', async (req, res) => {
+  transport = new SSEServerTransport('/message', res);
   await mcpServer.connect(transport);
-};
+});
 
-app.get('/sse', handleSSE);
-app.get('/', handleSSE);
-
-// Route client messages
 app.post('/message', async (req, res) => {
-  const sessionId = req.query.sessionId;
-  const transport = transports.get(sessionId);
-
-  if (!transport) {
-    return res.status(404).send('Session not found');
+  if (transport) {
+    await transport.handlePostMessage(req, res);
+  } else {
+    res.status(400).send('No active SSE session');
   }
-
-  await transport.handlePostMessage(req, res);
 });
 
 app.listen(PORT, () => {
-  console.log(`Workflowy MCP Server active on port ${PORT}`);
+  console.log(`Workflowy MCP Server listening on port ${PORT}`);
 });
